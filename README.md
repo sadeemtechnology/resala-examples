@@ -39,7 +39,7 @@ Resala generates the code, sends it and returns it as `pin`. **Verifying the cod
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /pins` | Generate and send an OTP code (international numbers accepted here) |
+| `POST /pins` | Generate and send an OTP code |
 | `POST /messages/send-template` | Send an approved message template to one or more Libyan numbers, with `$1`, `$2`… variables |
 | `POST /messages/bulk-send` | Send a CSV file of `phone,content` rows (over 50 rows runs in the background and returns a `batch_id`) |
 | `GET /sent-view` | Message log with delivery status for every code and message |
@@ -61,7 +61,7 @@ Each folder also has a `send-template` example and `curl/` has the bulk-send and
 
 ## Phone numbers
 
-Libyan numbers in international format: `218` + `91`/`92`/`93`/`94` + 7 digits, e.g. `218910001234`. Templates and bulk sends accept Libyan numbers only; `/pins` also accepts international numbers.
+Libyan numbers in international format: `218` + `91`/`92`/`93`/`94` + 7 digits, e.g. `218910001234`. Only Libyan numbers are accepted.
 
 ## Sender ID
 

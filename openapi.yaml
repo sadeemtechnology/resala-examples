@@ -10,8 +10,7 @@ info:
     to run in test mode (nothing is sent or charged).
 
     Libyan numbers use international format: `218` + `91|92|93|94` + 7 digits.
-    Templates and bulk sends accept Libyan numbers only; `/pins` also accepts
-    international numbers.
+    Only Libyan numbers are accepted.
   termsOfService: https://resala.ly/
   contact:
     name: Resala support
