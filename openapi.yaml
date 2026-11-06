@@ -1,0 +1,300 @@
+openapi: 3.1.0
+info:
+  title: Resala SMS & OTP API
+  version: "1.0"
+  summary: Send OTP codes and SMS to Libyana and Almadar subscribers in Libya.
+  description: |
+    Resala (رسالة) is a licensed Libyan SMS gateway. Create an API key in the
+    dashboard (https://dashboard.resala.ly) and send it as a Bearer token.
+    Price: 0.10 LYD per SMS, pay as you go. Append `?test` to any send request
+    to run in test mode (nothing is sent or charged).
+
+    Libyan numbers use international format: `218` + `91|92|93|94` + 7 digits.
+    Templates and bulk sends accept Libyan numbers only; `/pins` also accepts
+    international numbers.
+  termsOfService: https://resala.ly/
+  contact:
+    name: Resala support
+    url: https://resala.ly/
+  license:
+    name: Documentation under MIT (examples repository)
+    url: https://github.com/sadeemtechnology/resala-examples/blob/main/LICENSE
+externalDocs:
+  description: Public API documentation
+  url: https://resala.ly/en/docs/
+servers:
+  - url: https://dev.resala.ly/api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: OTP
+  - name: Messages
+  - name: Log
+
+paths:
+  /pins:
+    post:
+      tags: [OTP]
+      operationId: sendOtp
+      summary: Generate and send an OTP code
+      description: |
+        Generates a verification code, sends it by SMS and returns it as `pin`.
+        Verifying the code is the caller's responsibility: store `pin`
+        server-side, compare it with the user's input and enforce your own expiry.
+      parameters:
+        - name: service_name
+          in: query
+          description: 'Your app name, appended to the SMS text (e.g. "رمز التحقق: 482913 - MyApp").'
+          schema: { type: string, example: MyApp }
+        - $ref: "#/components/parameters/test"
+        - name: len
+          in: query
+          description: Code length.
+          schema: { type: integer, enum: [4, 5, 6], default: 6 }
+        - name: autofill
+          in: query
+          description: Android App Signature hash for SMS autofill.
+          schema: { type: string }
+        - $ref: "#/components/parameters/sender"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  description: Recipient in international format. International numbers are accepted on this endpoint only.
+                  example: "218910001234"
+      responses:
+        "201":
+          description: Code generated and sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pin" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /messages/send-template:
+    post:
+      tags: [Messages]
+      operationId: sendTemplate
+      summary: Send an approved message template
+      description: |
+        Sends a template approved in the dashboard ("Message templates") to one
+        or more Libyan numbers, filling `$1`, `$2`… variables. Each record may
+        carry its own `scheduled_at`. Scheduled sends return `batch_id` and
+        `queued: true`; follow them with `GET /message-batches/{id}`.
+      parameters:
+        - name: sms_template_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/test"
+        - $ref: "#/components/parameters/sender"
+        - $ref: "#/components/parameters/scheduled_at"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [records]
+              properties:
+                records:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [phone]
+                    properties:
+                      phone: { type: string, example: "218910001234", description: "Libyan number only." }
+                      scheduled_at: { type: string, example: "2026-11-20 09:00", description: "Optional per-record schedule (Libya time or RFC 3339)." }
+                    additionalProperties:
+                      type: string
+                      description: Template variables as `$1`, `$2`…
+            example:
+              records:
+                - { phone: "218910001234", "$1": "Resala", "$2": "Ahmed" }
+      responses:
+        "201":
+          description: Batch result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+
+  /messages/bulk-send:
+    post:
+      tags: [Messages]
+      operationId: bulkSend
+      summary: Send many messages from a CSV file
+      description: |
+        Multipart upload of a CSV whose first line is `phone,content`, with an
+        optional `scheduled_at` column. The whole file is priced first; if the
+        balance is insufficient nothing is sent (400). More than 50 rows runs in
+        the background: the response carries `batch_id` and `queued: true`.
+        Invalid (non-Libyan) numbers are returned in `invalid_numbers` and not charged.
+      parameters:
+        - $ref: "#/components/parameters/sender"
+        - $ref: "#/components/parameters/scheduled_at"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [csv]
+              properties:
+                csv: { type: string, format: binary, description: "CSV file: phone,content[,scheduled_at]" }
+      responses:
+        "201":
+          description: Batch result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /sent-view:
+    get:
+      tags: [Log]
+      operationId: listSent
+      summary: Message log with delivery status
+      description: Everything sent (codes and messages) with the status of each. Status updates after sending, so poll here instead of waiting on the send response.
+      parameters:
+        - name: filters
+          in: query
+          description: "`source:message`, `source:pin` or `source:message|pin`."
+          schema: { type: string, example: "source:message|pin" }
+        - name: q
+          in: query
+          description: Search in text and recipient number.
+          schema: { type: string }
+        - name: sorts
+          in: query
+          description: Sort column; prefix with `-` for descending.
+          schema: { type: string, example: "-created_at" }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: paginate
+          in: query
+          description: Rows per page.
+          schema: { type: integer, example: 20 }
+      responses:
+        "200":
+          description: Paginated log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/SentMessage" }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      per_page: { type: integer }
+                      current_page: { type: integer }
+                      last_page: { type: integer }
+        "401": { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key created in the dashboard (API → Create key).
+  parameters:
+    test:
+      name: test
+      in: query
+      description: Test mode. Nothing is sent or charged; the response has the same shape.
+      allowEmptyValue: true
+      schema: { type: string }
+    sender:
+      name: sender
+      in: query
+      description: |
+        A sender name registered and active on your account (case-sensitive). If it
+        is not active on the recipient's network the message goes out under your
+        default name, then "Resala", with no error.
+      schema: { type: string, example: MyBrand }
+    scheduled_at:
+      name: scheduled_at
+      in: query
+      description: Schedule the send. `YYYY-MM-DD HH:MM` in Libya time or RFC 3339; must be in the future and within 30 days. Ignored with `test`.
+      schema: { type: string, example: "2026-11-20 09:00" }
+  responses:
+    Error:
+      description: Error. Branch on `type`, not on the localized `message`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Pin:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        pin: { type: string, example: "482913", description: "The generated code. Store it server-side and verify it yourself." }
+        code: { type: string, example: "218", description: "Country code." }
+        region: { type: string, example: LY }
+        number: { type: string, example: "910001234" }
+        content: { type: string, example: "رمز التحقق: 482913 - MyApp" }
+        hit_count: { type: integer }
+        sender_name: { type: string, example: MyBrand, description: "The sender name the SMS actually went out with." }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    BatchResult:
+      type: object
+      properties:
+        is_prod: { type: boolean }
+        total_messages: { type: integer }
+        total_cost: { type: number, example: 0.1, description: "Total in LYD." }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        failed_numbers: { type: array, items: { type: string } }
+        invalid_numbers: { type: array, items: { type: string }, description: "Non-Libyan numbers, returned as sent and not charged." }
+        sender_names:
+          type: object
+          properties:
+            libyana: { type: string }
+            almadar: { type: string }
+        batch_id: { type: string, description: "Present when the send runs in the background (over 50 rows, or scheduled)." }
+        queued: { type: boolean }
+        scheduled_at: { type: string }
+    SentMessage:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: "218" }
+        region: { type: string, example: LY }
+        number: { type: string, example: "910001234" }
+        content: { type: string }
+        source: { type: string, enum: [message, pin] }
+        status:
+          type: string
+          enum: [accepted, sent, delivered, undelivered, pending, failed]
+          description: accepted = handed to the carrier; sent = sent at the carrier; delivered = reached the handset; undelivered = carrier reported non-delivery; pending = queued at the carrier; failed = rejected by every network.
+        pages: { type: integer, description: "Billed SMS segments (≤70 chars = 1, then 67-char pages)." }
+        env: { type: string, enum: [production, test] }
+        sender_name: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Error:
+      type: object
+      properties:
+        status: { type: integer, example: 400 }
+        type:
+          type: string
+          enum: [AccountExpired, InsufficientCredit, BadRequest, Unauthorized, TokenExpired, Forbidden, NotFound, InputValidation]
+        message: { type: string, description: "Localized, may change." }
+        request_id: { type: string, example: "01JQ8Z4K7M", description: "Include when contacting support." }

@@ -1,0 +1,7 @@
+name: resala_examples
+description: Plain-HTTP examples for the Resala SMS/OTP API (Libya).
+publish_to: none
+environment:
+  sdk: ^3.0.0
+dependencies:
+  http: ^1.2.0
