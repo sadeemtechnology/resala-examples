@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner.png" alt="Resala API examples: plain-HTTP SMS & OTP API for Libya (Libyana & Almadar)" width="100%"></p>
+
 # Resala API examples
 
 Plain-HTTP examples for [Resala](https://resala.ly) (رسالة), the Libyan SMS gateway and OTP verification API. Send one-time passwords and SMS to **Libyana** and **Almadar** subscribers with a single `POST` request. No SDK required: every example below is a short, dependency-free HTTP call you can paste into your project.
